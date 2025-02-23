@@ -13,14 +13,19 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -37,8 +42,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.text.style.TextAlign
@@ -64,6 +72,12 @@ import com.example.digitaltablet.util.toFile
 import com.example.digitalrobot.presentation.robot.RobotState
 import com.example.digitalrobot.presentation.robot.RobotEvent
 import com.example.digitalrobot.presentation.robot.RobotBodyPart
+import com.example.digitalrobot.presentation.robot.RobotScreen
+import kotlinx.coroutines.delay
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import com.example.digitalrobot.presentation.robot.component.TouchArea
+import com.example.digitalrobot.presentation.robot.component.VideoPlayer
 
 @Composable
 fun TabletScreen(
@@ -128,7 +142,7 @@ fun TabletScreen(
     }
 
     // grid touch event
-    var showGridDialog by remember { mutableStateOf(false) }
+    var showRobotDialog by remember { mutableStateOf(false) }
 
     state.toastMessages.let {
         if (it.isNotEmpty()) {
@@ -150,7 +164,7 @@ fun TabletScreen(
         ) == PackageManager.PERMISSION_GRANTED
         if (!hasCameraPermission) cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
         launcher.launch(Manifest.permission.RECORD_AUDIO)
-        onEvent(TabletEvent.ConnectMqttBroker)
+//        onEvent(TabletEvent.ConnectMqttBroker)
         onRobotEvent(RobotEvent.InitTTS(context))
     }
 
@@ -158,6 +172,8 @@ fun TabletScreen(
         if (tabletDeviceId.isNotEmpty() && tabletDeviceId != robotDeviceId) {
             onRobotEvent(RobotEvent.SetConnectInfos(deviceId = tabletDeviceId))
             onRobotEvent(RobotEvent.ConnectMqttBroker)
+            delay(2000)
+            onEvent(TabletEvent.ConnectMqttBroker)
         }
     }
 
@@ -185,9 +201,10 @@ fun TabletScreen(
                         .weight(1f),
                     onClick = { navigateUp() }
                 ) {
-                    Image(
-                        painter = painterResource(id = R.drawable.ic_kebbi),
+                    Icon(
+                        imageVector = ImageVector.vectorResource(id = R.drawable.ic_home),
                         contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onBackground,
                         modifier = Modifier.fillMaxSize()
                     )
                 }
@@ -286,13 +303,12 @@ fun TabletScreen(
                         .fillMaxWidth()
                         .weight(1f),
                     onClick = {
-                        showGridDialog = true
+                        showRobotDialog = true
                     }
                 ) {
-                    Icon(
-                        imageVector = ImageVector.vectorResource(id = R.drawable.ic_table),
+                    Image(
+                        painter = painterResource(id = R.drawable.ic_kebbi),
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onBackground,
                         modifier = Modifier.fillMaxSize()
                     )
                 }
@@ -539,74 +555,128 @@ fun TabletScreen(
         )
     }
 
-    // display grid Dialog
-    if (showGridDialog) {
-        GridDialog(onDismiss = { showGridDialog = false }, onGridItemClick = { index, gridName, event ->
-            onRobotEvent(event)
-            Log.d("Grid", "choose $gridName ($index)")
-            showGridDialog = false
-        })
-    }
-}
+    // display robot dialog
+    if (showRobotDialog) {
+        Dialog(
+            onDismissRequest = { showRobotDialog = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Box(
+                modifier = Modifier
+                    .width(800.dp)
+                    .height(500.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color.White)
+                    .padding(16.dp)
+            ) {
+                BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                    val density = LocalDensity.current
+                    val screenWidth = with(density) { constraints.maxWidth.toDp() }
+                    val screenHeight = with(density) { constraints.maxHeight.toDp() }
 
-// display grid Dialog
-@Composable
-fun GridDialog(
-    onDismiss: () -> Unit,
-    onGridItemClick: (Int, String, RobotEvent) -> Unit //
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(text = "Choose Touch Place") },
-        text = {
-            Column {
-                Row(
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    GridItem(0, "Left face", RobotEvent.TapBodyPart(RobotBodyPart.LEFT_FACE), onGridItemClick)
-                    GridItem(1, "Head", RobotEvent.TapBodyPart(RobotBodyPart.HEAD), onGridItemClick)
-                    GridItem(2, "Right face", RobotEvent.TapBodyPart(RobotBodyPart.RIGHT_FACE), onGridItemClick)
+                    VideoPlayer(
+                        videoResId = R.raw.m_idle,
+                        repeat = false,
+                        modifier = Modifier.fillMaxSize()
+                    )
+
+                    VideoPlayer(
+                        videoResId = R.raw.e_smile,
+                        repeat = true,
+                        modifier =
+                            Modifier
+                                .offset(
+                                    x = screenWidth * 0.4f,
+                                    y = screenHeight * 0.195f
+                                )
+                                .fillMaxWidth(0.215f)
+                                .fillMaxHeight(0.215f)
+                    )
+
+                    // touch area
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        val touchAreaColor = Color.Red.copy(alpha = 0.3f)
+
+                        TouchArea(
+                            heightPercent = 0.1f,
+                            widthPercent = 0.3f,
+                            color = touchAreaColor,
+                            offsetXPercent = 0.35f,
+                            offsetYPercent = 0.05f
+                        ) {
+                            onRobotEvent(RobotEvent.TapBodyPart(RobotBodyPart.HEAD))
+                            showRobotDialog = false
+                        }
+
+                        TouchArea(
+                            heightPercent = 0.3f,
+                            widthPercent = 0.2f,
+                            color = touchAreaColor,
+                            offsetXPercent = 0.4f,
+                            offsetYPercent = 0.65f
+                        ) {
+                            onRobotEvent(RobotEvent.TapBodyPart(RobotBodyPart.CHEST))
+                            showRobotDialog = false
+                        }
+
+                        TouchArea(
+                            heightPercent = 0.1f,
+                            widthPercent = 0.075f,
+                            color = touchAreaColor,
+                            offsetXPercent = 0.275f,
+                            offsetYPercent = 0.8f
+                        ) {
+                            onRobotEvent(RobotEvent.TapBodyPart(RobotBodyPart.RIGHT_HAND))
+                            showRobotDialog = false
+                        }
+
+                        TouchArea(
+                            heightPercent = 0.1f,
+                            widthPercent = 0.075f,
+                            color = touchAreaColor,
+                            offsetXPercent = 0.675f,
+                            offsetYPercent = 0.8f
+                        ) {
+                            onRobotEvent(RobotEvent.TapBodyPart(RobotBodyPart.LEFT_HAND))
+                            showRobotDialog = false
+                        }
+
+                        TouchArea(
+                            heightPercent = 0.25f,
+                            widthPercent = 0.05f,
+                            color = touchAreaColor,
+                            offsetXPercent = 0.62f,
+                            offsetYPercent = 0.2f
+                        ) {
+                            onRobotEvent(RobotEvent.TapBodyPart(RobotBodyPart.LEFT_FACE))
+                            showRobotDialog = false
+                        }
+
+                        TouchArea(
+                            heightPercent = 0.25f,
+                            widthPercent = 0.05f,
+                            color = touchAreaColor,
+                            offsetXPercent = 0.35f,
+                            offsetYPercent = 0.2f
+                        ) {
+                            onRobotEvent(RobotEvent.TapBodyPart(RobotBodyPart.RIGHT_FACE))
+                            showRobotDialog = false
+                        }
+
+                        TouchArea(
+                            heightPercent = 0.1f,
+                            widthPercent = 0.2f,
+                            color = Color.Transparent,
+                            offsetXPercent = 0.4f,
+                            offsetYPercent = 0.45f
+                        ) {
+                            onRobotEvent(RobotEvent.ToggleTouchAreaDisplay)
+                            showRobotDialog = false
+                        }
+                    }
                 }
-                Row(
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    GridItem(3, "Left hand", RobotEvent.TapBodyPart(RobotBodyPart.LEFT_HAND), onGridItemClick)
-                    GridItem(4, "Chest", RobotEvent.TapBodyPart(RobotBodyPart.CHEST), onGridItemClick)
-                    GridItem(5, "Right hand", RobotEvent.TapBodyPart(RobotBodyPart.RIGHT_HAND), onGridItemClick)
-                }
-            }
-        },
-        confirmButton = {
-            Button(onClick = onDismiss) {
-                Text("Close")
             }
         }
-    )
-}
-
-// function of each grid
-@Composable
-fun GridItem(
-    index: Int,
-    gridName: String,
-    event: RobotEvent,
-    onClick: (Int, String, RobotEvent) -> Unit
-){
-    Box(
-        modifier = Modifier
-            .size(100.dp)
-            .padding(8.dp)
-            .background(MaterialTheme.colorScheme.primary)
-            .clickable { onClick(index, gridName, event) },
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = gridName,
-            color = MaterialTheme.colorScheme.onPrimary,
-            textAlign = TextAlign.Center
-        )
     }
 }
 

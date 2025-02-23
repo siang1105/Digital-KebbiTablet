@@ -119,7 +119,8 @@ class TabletViewModel @Inject constructor(
     }
 
     private fun setConnectInfos(deviceId: String, apiKey: String, asstId: String) {
-        Log.d("TabletViewModel", "Setting Device ID: $deviceId")
+        showToast("tablet : Set assistant ID: $asstId")
+        showToast("tablet : Set API key: $apiKey")
         _state.value = _state.value.copy(
             deviceId = deviceId,
             gptApiKey = apiKey,

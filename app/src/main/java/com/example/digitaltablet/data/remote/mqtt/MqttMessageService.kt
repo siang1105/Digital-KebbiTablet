@@ -43,7 +43,7 @@ class MqttMessageService : Service() {
                     Handler(Looper.getMainLooper()).post {
                         Toast.makeText(
                             this@MqttMessageService,
-                            "MQTT Broker Connected!",
+                            "tablet : MQTT Broker Connected!",
                             Toast.LENGTH_SHORT
                         ).show()
                     }
@@ -59,7 +59,7 @@ class MqttMessageService : Service() {
                 Handler(Looper.getMainLooper()).post {
                     Toast.makeText(
                         this@MqttMessageService,
-                        "MQTT Broker Disconnected!",
+                        "tablet : MQTT Broker Disconnected!",
                         Toast.LENGTH_SHORT
                     ).show()
                 }
