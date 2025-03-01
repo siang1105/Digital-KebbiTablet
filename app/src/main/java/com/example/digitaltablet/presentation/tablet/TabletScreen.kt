@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.util.Log
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -35,6 +36,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -93,10 +95,21 @@ fun TabletScreen(
     val tabletDeviceId = state.deviceId // Tablet deviceId
     val robotDeviceId = robotState.deviceId // Robot deviceId
 
-    val launcher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission(),
-        onResult = {}
-    )
+    val multiplePermissionsLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val audioGranted = permissions[Manifest.permission.RECORD_AUDIO] ?: false
+        val cameraGranted = permissions[Manifest.permission.CAMERA] ?: false
+
+//        Log.d("PermissionCheck", "Audio Permission Granted: $audioGranted")
+//        Log.d("PermissionCheck", "Camera Permission Granted: $cameraGranted")
+
+//        if (audioGranted && cameraGranted) {
+//            Toast.makeText(context, "All permissions granted", Toast.LENGTH_SHORT).show()
+//        } else {
+//            Toast.makeText(context, "Some permissions were not granted", Toast.LENGTH_SHORT).show()
+//        }
+    }
 
     // Image Upload
     val imagePickerLauncher = rememberLauncherForActivityResult(
@@ -143,6 +156,7 @@ fun TabletScreen(
 
     // grid touch event
     var showRobotDialog by remember { mutableStateOf(false) }
+    var isVideoLoaded by remember { mutableStateOf(false) }
 
     state.toastMessages.let {
         if (it.isNotEmpty()) {
@@ -158,13 +172,26 @@ fun TabletScreen(
     }
 
     LaunchedEffect(Unit) {
-        hasCameraPermission = ContextCompat.checkSelfPermission(
-            context,
-            Manifest.permission.CAMERA
-        ) == PackageManager.PERMISSION_GRANTED
-        if (!hasCameraPermission) cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-        launcher.launch(Manifest.permission.RECORD_AUDIO)
-//        onEvent(TabletEvent.ConnectMqttBroker)
+        val permissionsToRequest = mutableListOf<String>()
+
+        // RECORD_AUDIO
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            permissionsToRequest.add(Manifest.permission.RECORD_AUDIO)
+        }
+
+        // CAMERA
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            permissionsToRequest.add(Manifest.permission.CAMERA)
+        }
+
+        if (permissionsToRequest.isNotEmpty()) {
+            multiplePermissionsLauncher.launch(permissionsToRequest.toTypedArray())
+        }
+
         onRobotEvent(RobotEvent.InitTTS(context))
     }
 
@@ -174,6 +201,13 @@ fun TabletScreen(
             onRobotEvent(RobotEvent.ConnectMqttBroker)
             delay(2000)
             onEvent(TabletEvent.ConnectMqttBroker)
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            onRobotEvent(RobotEvent.DisconnectMqttBroker)
+            onRobotEvent(RobotEvent.DestroyTTS)
         }
     }
 
@@ -432,7 +466,9 @@ fun TabletScreen(
                                 contentColor = MaterialTheme.colorScheme.onPrimary
                             ),
                             shape = MaterialTheme.shapes.large,
-                            enabled = state.isCanvasTappable && state.mediaIdx != null,
+                            enabled = state.isCanvasTappable &&
+                                    state.mediaIdx != null &&
+                                    state.canvasTapPositions.isNotEmpty(),
                             modifier = Modifier
                                 .padding(horizontal = SmallPadding)
                                 .fillMaxHeight()
@@ -577,7 +613,8 @@ fun TabletScreen(
                     VideoPlayer(
                         videoResId = R.raw.m_idle,
                         repeat = false,
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier.fillMaxSize(),
+                        onVideoLoaded = { isVideoLoaded = true },
                     )
 
                     VideoPlayer(
@@ -594,86 +631,89 @@ fun TabletScreen(
                     )
 
                     // touch area
-                    Box(modifier = Modifier.fillMaxSize()) {
-                        val touchAreaColor = Color.Red.copy(alpha = 0.3f)
+                    if (isVideoLoaded) {
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            val touchAreaColor = Color.Red.copy(alpha = 0.3f)
 
-                        TouchArea(
-                            heightPercent = 0.1f,
-                            widthPercent = 0.3f,
-                            color = touchAreaColor,
-                            offsetXPercent = 0.35f,
-                            offsetYPercent = 0.05f
-                        ) {
-                            onRobotEvent(RobotEvent.TapBodyPart(RobotBodyPart.HEAD))
-                            showRobotDialog = false
-                        }
+                            TouchArea(
+                                heightPercent = 0.1f,
+                                widthPercent = 0.3f,
+                                color = touchAreaColor,
+                                offsetXPercent = 0.35f,
+                                offsetYPercent = 0.05f
+                            ) {
+                                onRobotEvent(RobotEvent.TapBodyPart(RobotBodyPart.HEAD))
+                                showRobotDialog = false
+                            }
 
-                        TouchArea(
-                            heightPercent = 0.3f,
-                            widthPercent = 0.2f,
-                            color = touchAreaColor,
-                            offsetXPercent = 0.4f,
-                            offsetYPercent = 0.65f
-                        ) {
-                            onRobotEvent(RobotEvent.TapBodyPart(RobotBodyPart.CHEST))
-                            showRobotDialog = false
-                        }
+                            TouchArea(
+                                heightPercent = 0.3f,
+                                widthPercent = 0.2f,
+                                color = touchAreaColor,
+                                offsetXPercent = 0.4f,
+                                offsetYPercent = 0.65f
+                            ) {
+                                onRobotEvent(RobotEvent.TapBodyPart(RobotBodyPart.CHEST))
+                                showRobotDialog = false
+                            }
 
-                        TouchArea(
-                            heightPercent = 0.1f,
-                            widthPercent = 0.075f,
-                            color = touchAreaColor,
-                            offsetXPercent = 0.275f,
-                            offsetYPercent = 0.8f
-                        ) {
-                            onRobotEvent(RobotEvent.TapBodyPart(RobotBodyPart.RIGHT_HAND))
-                            showRobotDialog = false
-                        }
+                            TouchArea(
+                                heightPercent = 0.1f,
+                                widthPercent = 0.075f,
+                                color = touchAreaColor,
+                                offsetXPercent = 0.275f,
+                                offsetYPercent = 0.8f
+                            ) {
+                                onRobotEvent(RobotEvent.TapBodyPart(RobotBodyPart.RIGHT_HAND))
+                                showRobotDialog = false
+                            }
 
-                        TouchArea(
-                            heightPercent = 0.1f,
-                            widthPercent = 0.075f,
-                            color = touchAreaColor,
-                            offsetXPercent = 0.675f,
-                            offsetYPercent = 0.8f
-                        ) {
-                            onRobotEvent(RobotEvent.TapBodyPart(RobotBodyPart.LEFT_HAND))
-                            showRobotDialog = false
-                        }
+                            TouchArea(
+                                heightPercent = 0.1f,
+                                widthPercent = 0.075f,
+                                color = touchAreaColor,
+                                offsetXPercent = 0.675f,
+                                offsetYPercent = 0.8f
+                            ) {
+                                onRobotEvent(RobotEvent.TapBodyPart(RobotBodyPart.LEFT_HAND))
+                                showRobotDialog = false
+                            }
 
-                        TouchArea(
-                            heightPercent = 0.25f,
-                            widthPercent = 0.05f,
-                            color = touchAreaColor,
-                            offsetXPercent = 0.62f,
-                            offsetYPercent = 0.2f
-                        ) {
-                            onRobotEvent(RobotEvent.TapBodyPart(RobotBodyPart.LEFT_FACE))
-                            showRobotDialog = false
-                        }
+                            TouchArea(
+                                heightPercent = 0.25f,
+                                widthPercent = 0.05f,
+                                color = touchAreaColor,
+                                offsetXPercent = 0.62f,
+                                offsetYPercent = 0.2f
+                            ) {
+                                onRobotEvent(RobotEvent.TapBodyPart(RobotBodyPart.LEFT_FACE))
+                                showRobotDialog = false
+                            }
 
-                        TouchArea(
-                            heightPercent = 0.25f,
-                            widthPercent = 0.05f,
-                            color = touchAreaColor,
-                            offsetXPercent = 0.35f,
-                            offsetYPercent = 0.2f
-                        ) {
-                            onRobotEvent(RobotEvent.TapBodyPart(RobotBodyPart.RIGHT_FACE))
-                            showRobotDialog = false
-                        }
+                            TouchArea(
+                                heightPercent = 0.25f,
+                                widthPercent = 0.05f,
+                                color = touchAreaColor,
+                                offsetXPercent = 0.35f,
+                                offsetYPercent = 0.2f
+                            ) {
+                                onRobotEvent(RobotEvent.TapBodyPart(RobotBodyPart.RIGHT_FACE))
+                                showRobotDialog = false
+                            }
 
-                        TouchArea(
-                            heightPercent = 0.1f,
-                            widthPercent = 0.2f,
-                            color = Color.Transparent,
-                            offsetXPercent = 0.4f,
-                            offsetYPercent = 0.45f
-                        ) {
-                            onRobotEvent(RobotEvent.ToggleTouchAreaDisplay)
-                            showRobotDialog = false
+                            TouchArea(
+                                heightPercent = 0.1f,
+                                widthPercent = 0.2f,
+                                color = Color.Transparent,
+                                offsetXPercent = 0.4f,
+                                offsetYPercent = 0.45f
+                            ) {
+                                onRobotEvent(RobotEvent.ToggleTouchAreaDisplay)
+                                showRobotDialog = false
+                            }
                         }
                     }
+
                 }
             }
         }
